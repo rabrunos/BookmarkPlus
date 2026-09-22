@@ -3,7 +3,9 @@ const $ = id => document.getElementById(id);
 
 let treeRoot = null;
 let currentFolderId = null;
+let currentRootId = null;
 let expandedFolders = new Set();
+let contentCollapsedFolders = new Set();
 let selectedIds = new Set();
 let validatedImport = null;
 let simpleMode = null;
@@ -53,9 +55,17 @@ async function safeGet(id) {
 }
 
 async function loadExpansionState() {
-  const data = await chrome.storage.local.get('favoritosPlusExpanded');
+  const data = await chrome.storage.local.get([
+    'favoritosPlusExpanded',
+    'favoritosPlusContentCollapsed'
+  ]);
+
   if (Array.isArray(data.favoritosPlusExpanded)) {
     expandedFolders = new Set(data.favoritosPlusExpanded);
+  }
+
+  if (Array.isArray(data.favoritosPlusContentCollapsed)) {
+    contentCollapsedFolders = new Set(data.favoritosPlusContentCollapsed);
   }
 }
 
@@ -63,8 +73,121 @@ async function saveExpansionState() {
   await chrome.storage.local.set({favoritosPlusExpanded:[...expandedFolders]});
 }
 
-function folderChildren(node) {
+async function saveContentCollapseState() {
+  await chrome.storage.local.set({
+    favoritosPlusContentCollapsed:[...contentCollapsedFolders]
+  });
+}
+
+function folderChildren(node) {function folderChildren(node) {
   return (node.children || []).filter(x => !x.url);
+}
+
+function isSystemRoot(id) {
+  return (treeRoot?.children || []).some(root => root.id === id);
+}
+
+function rootForNode(id) {
+  let node = findNodeById(treeRoot, id);
+  if (!node) return null;
+
+  while (node && node.parentId && node.parentId !== '0') {
+    node = findNodeById(treeRoot, node.parentId);
+  }
+
+  return node && node.parentId === '0' ? node : null;
+}
+
+function expandSidebarAncestors(id) {
+  let node = findNodeById(treeRoot, id);
+  while (node && node.parentId && node.parentId !== '0') {
+    const parent = findNodeById(treeRoot, node.parentId);
+    if (!parent) break;
+    expandedFolders.add(parent.id);
+    node = parent;
+  }
+}
+
+function nodeContainsId(node, id) {
+  if (!node) return false;
+  if (node.id === id) return true;
+  return (node.children || []).some(child => nodeContainsId(child, id));
+}
+
+function dragNodeId(event) {
+  return event.dataTransfer.getData('text/bookmarkplus-id') ||
+    event.dataTransfer.getData('text/bookmark-id');
+}
+
+function beginDrag(event, node) {
+  event.dataTransfer.setData('text/bookmarkplus-id', node.id);
+  event.dataTransfer.effectAllowed = 'move';
+}
+
+async function moveNodeInto(movingId, parentId) {
+  if (!movingId || !parentId || movingId === parentId) return;
+
+  const moving = (await safeGet(movingId))?.[0];
+  if (!moving) return;
+
+  if (!moving.url && isSystemRoot(moving.id)) {
+    showToast('As pastas principais do Edge não podem ser movidas.');
+    return;
+  }
+
+  if (!moving.url) {
+    const movingTree = findNodeById(treeRoot, moving.id);
+    if (nodeContainsId(movingTree, parentId)) {
+      showToast('Não é possível mover uma pasta para dentro dela mesma.');
+      return;
+    }
+  }
+
+  try {
+    await chrome.bookmarks.move(movingId, {parentId});
+    await refreshAll();
+  } catch (error) {
+    console.error(error);
+    showToast('Não foi possível mover este item.');
+  }
+}
+
+async function moveNodeRelative(movingId, targetId, after=false) {
+  if (!movingId || !targetId || movingId === targetId) return;
+
+  const moving = (await safeGet(movingId))?.[0];
+  const target = (await safeGet(targetId))?.[0];
+  if (!moving || !target || !target.parentId) return;
+
+  if (!moving.url && isSystemRoot(moving.id)) {
+    showToast('As pastas principais do Edge não podem ser movidas.');
+    return;
+  }
+
+  const parentId = target.parentId;
+
+  if (!moving.url) {
+    const movingTree = findNodeById(treeRoot, moving.id);
+    if (nodeContainsId(movingTree, parentId)) {
+      showToast('Não é possível mover uma pasta para dentro dela mesma.');
+      return;
+    }
+  }
+
+  let index = Number(target.index ?? 0) + (after ? 1 : 0);
+  if (moving.parentId === parentId && Number(moving.index) < index) index--;
+
+  try {
+    await chrome.bookmarks.move(movingId, {parentId, index:Math.max(0,index)});
+    await refreshAll();
+  } catch (error) {
+    console.error(error);
+    showToast('Não foi possível reordenar este item.');
+  }
+}
+
+function clearDropClasses(element) {
+  element.classList.remove('drop-before','drop-after','drop-inside','drag-over');
 }
 
 function renderTree() {
@@ -88,7 +211,7 @@ function buildTreeNode(node, depth=0, isRoot=false) {
 
   const folders = folderChildren(node);
   const hasFolders = folders.length > 0;
-  const expanded = expandedFolders.has(node.id) || (isRoot && node.id === currentFolderId);
+  const expanded = expandedFolders.has(node.id);
 
   const chev = document.createElement('button');
   chev.className = 'tree-chevron' + (hasFolders ? '' : ' placeholder') + (expanded ? ' expanded' : '');
@@ -114,6 +237,31 @@ function buildTreeNode(node, depth=0, isRoot=false) {
 
   row.append(chev, icon, title);
   row.addEventListener('click', () => openFolder(node.id));
+
+  if (!isRoot) {
+    row.draggable = true;
+    row.addEventListener('dragstart', e => {
+      beginDrag(e, node);
+      row.classList.add('dragging');
+    });
+    row.addEventListener('dragend', () => row.classList.remove('dragging'));
+  }
+
+  row.addEventListener('dragover', e => {
+    if (!dragNodeId(e)) return;
+    e.preventDefault();
+    e.stopPropagation();
+    row.classList.add('drag-over');
+    e.dataTransfer.dropEffect = 'move';
+  });
+  row.addEventListener('dragleave', () => row.classList.remove('drag-over'));
+  row.addEventListener('drop', async e => {
+    e.preventDefault();
+    e.stopPropagation();
+    row.classList.remove('drag-over');
+    await moveNodeInto(dragNodeId(e), node.id);
+  });
+
   wrapper.appendChild(row);
 
   if (hasFolders) {
@@ -137,15 +285,23 @@ async function openFolder(id, smooth=true) {
   const node = got?.[0];
   if (!node || node.url) return;
 
+  const nextRoot = rootForNode(id);
+  const rootChanged = nextRoot && nextRoot.id !== currentRootId;
+
   currentFolderId = id;
-  expandedFolders.add(id);
+  if (nextRoot) currentRootId = nextRoot.id;
+
+  expandSidebarAncestors(id);
   await saveExpansionState();
 
-  // A barra lateral agora é um índice. Não trocamos o conteúdo central.
   $('searchInput').value = '';
   $('clearSearch').classList.add('hidden');
   selectedIds.clear();
   updateSelectionUI();
+
+  if (rootChanged || !document.querySelector(`.folder-section[data-folder-id="${CSS.escape(id)}"]`)) {
+    await renderAllContents();
+  }
 
   const section = document.querySelector(`.folder-section[data-folder-id="${CSS.escape(id)}"]`);
   if (section) {
@@ -155,8 +311,9 @@ async function openFolder(id, smooth=true) {
     setTimeout(() => { suppressObserver = false; }, smooth ? 450 : 60);
   }
 
-  const path = folderPath(node);
-  $('currentSectionLabel').textContent = path || node.title || 'Favoritos';
+  const root = findNodeById(treeRoot, currentRootId);
+  $('mainTitle').textContent = root?.title || 'Favoritos';
+  $('currentSectionLabel').textContent = folderPath(node) || node.title || 'Favoritos';
   renderTree();
 
   const url = new URL(location.href);
@@ -164,7 +321,7 @@ async function openFolder(id, smooth=true) {
   history.replaceState(null, '', url);
 }
 
-function folderPath(node) {
+function folderPath(node) {function folderPath(node) {
   const chain = [];
   let cur = node;
   const byId = new Map();
@@ -234,9 +391,23 @@ async function renderAllContents() {
   list.innerHTML = '';
 
   const roots = treeRoot?.children || [];
+  let root = findNodeById(treeRoot, currentRootId);
+
+  if (!root || root.parentId !== '0') {
+    root = roots[0] || null;
+    currentRootId = root?.id || null;
+  }
+
+  if (!root) {
+    $('emptyState').classList.remove('hidden');
+    return;
+  }
+
+  $('mainTitle').textContent = root.title || 'Favoritos';
+
   let totalLinks = 0;
 
-  const walkFolder = (folder, depth=0, path=[]) => {
+  const buildFolderSection = (folder, depth=0, path=[], isRoot=false) => {
     const section = document.createElement('section');
     section.className = 'folder-section';
     section.dataset.folderId = folder.id;
@@ -245,9 +416,24 @@ async function renderAllContents() {
     header.className = 'folder-section-header';
     header.style.paddingLeft = `${10 + depth * 18}px`;
 
+    const collapsed = contentCollapsedFolders.has(folder.id);
+
+    const chev = document.createElement('button');
+    chev.className = 'content-chevron' + (collapsed ? '' : ' expanded');
+    chev.innerHTML = SVG.chevron;
+    chev.title = collapsed ? 'Expandir pasta' : 'Recolher pasta';
+    chev.addEventListener('click', async e => {
+      e.stopPropagation();
+      if (contentCollapsedFolders.has(folder.id)) contentCollapsedFolders.delete(folder.id);
+      else contentCollapsedFolders.add(folder.id);
+      await saveContentCollapseState();
+      await renderAllContents();
+      renderTree();
+    });
+
     const icon = document.createElement('span');
     icon.className = 'tree-icon';
-    icon.innerHTML = (depth === 0 && folder === roots[0]) ? SVG.star : SVG.folder;
+    icon.innerHTML = isRoot && folder === roots[0] ? SVG.star : SVG.folder;
 
     const title = document.createElement('span');
     title.className = 'folder-section-title';
@@ -259,42 +445,114 @@ async function renderAllContents() {
     pathText.textContent = fullPath.join(' › ');
     pathText.title = pathText.textContent;
 
-    header.append(icon,title,pathText);
-    section.appendChild(header);
+    header.append(chev, icon, title, pathText);
 
-    const directBookmarks = (folder.children || []).filter(x => !!x.url);
-    const group = document.createElement('div');
-    group.className = 'folder-section-items';
-
-    if (directBookmarks.length) {
-      directBookmarks.forEach((item,index) => {
-        group.appendChild(buildBookmarkRow(item, depth, folder.id, index));
-        totalLinks++;
+    if (!isRoot) {
+      header.draggable = true;
+      header.addEventListener('dragstart', e => {
+        beginDrag(e, folder);
+        header.classList.add('dragging');
       });
-    } else {
-      const empty = document.createElement('div');
-      empty.className = 'folder-empty';
-      empty.style.paddingLeft = `${48 + depth * 18}px`;
-      empty.textContent = 'Nenhum favorito diretamente nesta pasta';
-      group.appendChild(empty);
+      header.addEventListener('dragend', () => header.classList.remove('dragging'));
     }
 
-    section.appendChild(group);
-    list.appendChild(section);
+    header.addEventListener('click', async e => {
+      if (e.target.closest('button')) return;
+      if (contentCollapsedFolders.has(folder.id)) contentCollapsedFolders.delete(folder.id);
+      else contentCollapsedFolders.add(folder.id);
+      await saveContentCollapseState();
+      await renderAllContents();
+      renderTree();
+    });
 
-    for (const child of folder.children || []) {
-      if (!child.url) walkFolder(child, depth+1, fullPath);
+    header.addEventListener('dragover', e => {
+      if (!dragNodeId(e)) return;
+      e.preventDefault();
+      e.stopPropagation();
+
+      clearDropClasses(header);
+
+      if (isRoot) {
+        header.classList.add('drop-inside');
+        return;
+      }
+
+      const rect = header.getBoundingClientRect();
+      const ratio = (e.clientY - rect.top) / Math.max(1, rect.height);
+      if (ratio < .25) header.classList.add('drop-before');
+      else if (ratio > .75) header.classList.add('drop-after');
+      else header.classList.add('drop-inside');
+    });
+
+    header.addEventListener('dragleave', () => clearDropClasses(header));
+    header.addEventListener('drop', async e => {
+      e.preventDefault();
+      e.stopPropagation();
+
+      const movingId = dragNodeId(e);
+      const inside = isRoot || header.classList.contains('drop-inside');
+      const after = header.classList.contains('drop-after');
+      clearDropClasses(header);
+
+      if (inside) await moveNodeInto(movingId, folder.id);
+      else await moveNodeRelative(movingId, folder.id, after);
+    });
+
+    const body = document.createElement('div');
+    body.className = 'folder-section-body' + (collapsed ? ' collapsed' : '');
+
+    if (!collapsed) {
+      const children = folder.children || [];
+
+      if (!children.length) {
+        const empty = document.createElement('div');
+        empty.className = 'folder-empty';
+        empty.style.paddingLeft = `${48 + depth * 18}px`;
+        empty.textContent = 'Pasta vazia';
+        body.appendChild(empty);
+      } else {
+        for (const child of children) {
+          if (child.url) {
+            body.appendChild(buildBookmarkRow(child, depth, folder.id, child.index ?? 0));
+            totalLinks++;
+          } else {
+            body.appendChild(buildFolderSection(child, depth + 1, fullPath, false));
+          }
+        }
+      }
     }
+
+    body.addEventListener('dragover', e => {
+      if (!dragNodeId(e)) return;
+      if (e.target.closest('.bookmark-item,.folder-section-header')) return;
+      e.preventDefault();
+      e.stopPropagation();
+      body.classList.add('drop-inside');
+    });
+    body.addEventListener('dragleave', e => {
+      if (e.currentTarget.contains(e.relatedTarget)) return;
+      body.classList.remove('drop-inside');
+    });
+    body.addEventListener('drop', async e => {
+      if (e.target.closest('.bookmark-item,.folder-section-header')) return;
+      e.preventDefault();
+      e.stopPropagation();
+      body.classList.remove('drop-inside');
+      await moveNodeInto(dragNodeId(e), folder.id);
+    });
+
+    section.append(header, body);
+    return section;
   };
 
-  for (const root of roots) walkFolder(root,0,[]);
+  list.appendChild(buildFolderSection(root, 0, [], true));
 
-  $('emptyState').classList.toggle('hidden', totalLinks > 0 || roots.length > 0);
+  $('emptyState').classList.toggle('hidden', totalLinks > 0 || (root.children || []).length > 0);
   setupSectionObserver();
   markActiveSection(currentFolderId);
 }
 
-function buildBookmarkRow(item, depth=0, parentId=null, index=0, searchMode=false) {
+function buildBookmarkRow(item, depth=0, parentId=null, index=0, searchMode=false) {function buildBookmarkRow(item, depth=0, parentId=null, index=0, searchMode=false) {
   const row = document.createElement('div');
   row.className = 'bookmark-item' + (selectedIds.has(item.id) ? ' selected' : '');
   row.dataset.id = item.id;
@@ -357,25 +615,32 @@ function buildBookmarkRow(item, depth=0, parentId=null, index=0, searchMode=fals
 
   if (!searchMode) {
     row.addEventListener('dragstart', e => {
-      e.dataTransfer.setData('text/bookmark-id', item.id);
-      e.dataTransfer.setData('text/source-parent-id', parentId || item.parentId || '');
-      e.dataTransfer.effectAllowed = 'move';
-      row.style.opacity = '.45';
+      beginDrag(e, item);
+      row.classList.add('dragging');
     });
-    row.addEventListener('dragend', () => row.style.opacity = '');
+    row.addEventListener('dragend', () => {
+      row.classList.remove('dragging');
+      clearDropClasses(row);
+    });
     row.addEventListener('dragover', e => {
-      const sourceParent = e.dataTransfer.types.includes('text/source-parent-id');
+      if (!dragNodeId(e)) return;
       e.preventDefault();
+      e.stopPropagation();
+      clearDropClasses(row);
+
+      const rect = row.getBoundingClientRect();
+      const after = e.clientY > rect.top + rect.height / 2;
+      row.classList.add(after ? 'drop-after' : 'drop-before');
       e.dataTransfer.dropEffect = 'move';
     });
+    row.addEventListener('dragleave', () => clearDropClasses(row));
     row.addEventListener('drop', async e => {
       e.preventDefault();
-      const movingId = e.dataTransfer.getData('text/bookmark-id');
-      const sourceParent = e.dataTransfer.getData('text/source-parent-id');
-      const destParent = parentId || item.parentId;
-      if (!movingId || movingId === item.id || sourceParent !== destParent) return;
-      await chrome.bookmarks.move(movingId,{parentId:destParent,index});
-      await refreshAll();
+      e.stopPropagation();
+      const movingId = dragNodeId(e);
+      const after = row.classList.contains('drop-after');
+      clearDropClasses(row);
+      await moveNodeRelative(movingId, item.id, after);
     });
   }
 
@@ -383,9 +648,7 @@ function buildBookmarkRow(item, depth=0, parentId=null, index=0, searchMode=fals
 }
 
 async function renderFolderContents(id) {
-  // Mantido como função de compatibilidade interna.
-  // A visão normal agora é sempre a árvore inteira.
-  await renderAllContents();
+  await openFolder(id, false);
 }
 
 function renderItems(items, searchMode=false) {
@@ -466,8 +729,11 @@ async function runSearch(query) {
   updateSelectionUI();
 
   if (!q) {
-    $('mainTitle').textContent = 'Todos os favoritos';
+    const root = findNodeById(treeRoot, currentRootId);
+    $('mainTitle').textContent = root?.title || 'Favoritos';
     await renderAllContents();
+    const active = findNodeById(treeRoot, currentFolderId);
+    if (active) $('currentSectionLabel').textContent = folderPath(active) || active.title || 'Favoritos';
     return;
   }
 
@@ -950,16 +1216,19 @@ async function openOrganizer() {
 async function refreshAll() {
   await refreshTree();
 
-  const current=(await safeGet(currentFolderId))?.[0];
-  if(!current || current.url){
-    currentFolderId=treeRoot?.children?.[0]?.id || null;
+  let current = findNodeById(treeRoot, currentFolderId);
+  if (!current || current.url) {
+    current = treeRoot?.children?.[0] || null;
+    currentFolderId = current?.id || null;
   }
 
-  $('mainTitle').textContent='Todos os favoritos';
+  const root = rootForNode(currentFolderId) || treeRoot?.children?.[0] || null;
+  currentRootId = root?.id || null;
+
   await renderAllContents();
 
-  const active=(await safeGet(currentFolderId))?.[0];
-  if(active) $('currentSectionLabel').textContent=folderPath(active) || active.title || 'Favoritos';
+  const active = findNodeById(treeRoot, currentFolderId);
+  if (active) $('currentSectionLabel').textContent = folderPath(active) || active.title || 'Favoritos';
 
   renderTree();
   updateSelectionUI();
@@ -969,17 +1238,20 @@ async function init() {
   await loadExpansionState();
   await refreshTree();
 
-  const requested=new URLSearchParams(location.search).get('id');
-  const requestedNode=requested ? (await safeGet(requested))?.[0] : null;
-  currentFolderId=requestedNode && !requestedNode.url
+  const requested = new URLSearchParams(location.search).get('id');
+  const requestedNode = requested ? findNodeById(treeRoot, requested) : null;
+  currentFolderId = requestedNode && !requestedNode.url
     ? requestedNode.id
     : (treeRoot?.children?.[0]?.id || null);
 
-  if(currentFolderId){
-    expandedFolders.add(currentFolderId);
-    $('mainTitle').textContent='Todos os favoritos';
+  const root = rootForNode(currentFolderId) || treeRoot?.children?.[0] || null;
+  currentRootId = root?.id || null;
+
+  if (currentFolderId) {
+    expandSidebarAncestors(currentFolderId);
+    await saveExpansionState();
     await renderAllContents();
-    await openFolder(currentFolderId,false);
+    await openFolder(currentFolderId, false);
   }
 
   chrome.bookmarks.onCreated.addListener(refreshAll);
@@ -988,7 +1260,7 @@ async function init() {
   chrome.bookmarks.onMoved.addListener(refreshAll);
 }
 
-$('searchInput').addEventListener('input',()=>{
+$('searchInput').addEventListener('input',()=>{$('searchInput').addEventListener('input',()=>{
   clearTimeout(searchTimer);
   searchTimer=setTimeout(()=>runSearch($('searchInput').value),180);
 });
