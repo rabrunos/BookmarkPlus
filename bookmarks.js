@@ -1266,7 +1266,7 @@ async function init() {
   chrome.bookmarks.onMoved.addListener(refreshAll);
 }
 
-$('searchInput').addEventListener('input',()=>{$('searchInput').addEventListener('input',()=>{
+$('searchInput').addEventListener('input',()=>{
   clearTimeout(searchTimer);
   searchTimer=setTimeout(()=>runSearch($('searchInput').value),180);
 });
@@ -1297,8 +1297,13 @@ $('addFolderButton').addEventListener('click',()=>openSimpleModal('folder'));
 $('simpleSave').addEventListener('click',saveSimpleItem);
 $('deleteSelectedButton').addEventListener('click',deleteSelected);
 
-$('showBarButton').addEventListener('click',()=>{
-  showToast('Atalho do Edge para mostrar/ocultar a barra: Ctrl + Shift + B');
+$('showBarButton').addEventListener('click', async ()=>{
+  showToast('Abrindo configurações da barra. Atalho rápido: Ctrl + Shift + B');
+  try {
+    await chrome.tabs.create({url:'edge://settings/appearance'});
+  } catch {
+    showToast('Use Ctrl + Shift + B para mostrar/ocultar a barra de favoritos.');
+  }
 });
 
 $('pasteButton').addEventListener('click',async()=>{
