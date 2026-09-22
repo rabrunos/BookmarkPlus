@@ -1,0 +1,39 @@
+{
+  "manifest_version": 3,
+  "name": "Favoritos+ para Edge",
+  "version": "0.3.1",
+  "description": "Favoritos no visual do Edge com visão contínua, índice lateral, importar HTML e backups.",
+  "permissions": [
+    "bookmarks",
+    "storage",
+    "clipboardRead",
+    "clipboardWrite",
+    "favicon"
+  ],
+  "action": {
+    "default_title": "Favoritos+",
+    "default_popup": "popup.html",
+    "default_icon": {
+      "16": "icons/star16.png",
+      "32": "icons/star32.png"
+    }
+  },
+  "chrome_url_overrides": {
+    "bookmarks": "bookmarks.html"
+  },
+  "icons": {
+    "16": "icons/star16.png",
+    "32": "icons/star32.png",
+    "48": "icons/star48.png",
+    "128": "icons/star128.png"
+  },
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAo+64KRZf+mxzmP72QEdXCRrg0tJovwiDTKg7FSraZ2yCKZDkaqqGC8Xh2Rotc04sGy4c9MwtNa+Bd1bXC3AFDUXOxkkREfxigCb0E8Ez5zcEVZsxhENw+ZYCS2ZI+T+D1OM03RWA1gJUVa5iiMWZpNh5xpfCcBo8FM7ieQfFV6CACpJM5DjKOk2hM11q4d1tuormMxejjFBcfXV/2vH0i6GqCXilkcib2J+tidjxzmR1Xo2vLY6cXTT64NLrgxkRv1ZCjH8dRXjMnAtrDFongNJ7AmBgZPe5S+dKWqjpXxJkLrCngJQLH+q3MO4/uRyrHxAQ8uGBBcXc8UcRYo1muQIDAQAB",
+  "background": {
+    "service_worker": "service-worker.js"
+  },
+  "externally_connectable": {
+    "ids": [
+      "econfanmnmmcggpgdflcipmdlmkcbiag"
+    ]
+  }
+}
