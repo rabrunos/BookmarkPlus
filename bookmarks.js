@@ -114,6 +114,12 @@ function nodeContainsId(node, id) {
   return (node.children || []).some(child => nodeContainsId(child, id));
 }
 
+function hasBookmarkDrag(event) {
+  return [...(event.dataTransfer?.types || [])].some(type =>
+    type === 'text/bookmarkplus-id' || type === 'text/bookmark-id'
+  );
+}
+
 function dragNodeId(event) {
   return event.dataTransfer.getData('text/bookmarkplus-id') ||
     event.dataTransfer.getData('text/bookmark-id');
@@ -248,7 +254,7 @@ function buildTreeNode(node, depth=0, isRoot=false) {
   }
 
   row.addEventListener('dragover', e => {
-    if (!dragNodeId(e)) return;
+    if (!hasBookmarkDrag(e)) return;
     e.preventDefault();
     e.stopPropagation();
     row.classList.add('drag-over');
@@ -466,7 +472,7 @@ async function renderAllContents() {
     });
 
     header.addEventListener('dragover', e => {
-      if (!dragNodeId(e)) return;
+      if (!hasBookmarkDrag(e)) return;
       e.preventDefault();
       e.stopPropagation();
 
@@ -523,7 +529,7 @@ async function renderAllContents() {
     }
 
     body.addEventListener('dragover', e => {
-      if (!dragNodeId(e)) return;
+      if (!hasBookmarkDrag(e)) return;
       if (e.target.closest('.bookmark-item,.folder-section-header')) return;
       e.preventDefault();
       e.stopPropagation();
@@ -623,7 +629,7 @@ function buildBookmarkRow(item, depth=0, parentId=null, index=0, searchMode=fals
       clearDropClasses(row);
     });
     row.addEventListener('dragover', e => {
-      if (!dragNodeId(e)) return;
+      if (!hasBookmarkDrag(e)) return;
       e.preventDefault();
       e.stopPropagation();
       clearDropClasses(row);
