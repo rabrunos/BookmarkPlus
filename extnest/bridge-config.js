@@ -5,6 +5,7 @@ globalThis.EXTNEST_BRIDGE_CONFIG = {
     "econfanmnmmcggpgdflcipmdlmkcbiag"
   ],
   backupKeys: [
-    "favoritosPlusExpanded"
+    "favoritosPlusExpanded",
+    "favoritosPlusContentCollapsed"
   ]
 };
