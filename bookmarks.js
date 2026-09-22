@@ -79,7 +79,7 @@ async function saveContentCollapseState() {
   });
 }
 
-function folderChildren(node) {function folderChildren(node) {
+function folderChildren(node) {
   return (node.children || []).filter(x => !x.url);
 }
 
@@ -321,7 +321,7 @@ async function openFolder(id, smooth=true) {
   history.replaceState(null, '', url);
 }
 
-function folderPath(node) {function folderPath(node) {
+function folderPath(node) {
   const chain = [];
   let cur = node;
   const byId = new Map();
@@ -552,7 +552,7 @@ async function renderAllContents() {
   markActiveSection(currentFolderId);
 }
 
-function buildBookmarkRow(item, depth=0, parentId=null, index=0, searchMode=false) {function buildBookmarkRow(item, depth=0, parentId=null, index=0, searchMode=false) {
+function buildBookmarkRow(item, depth=0, parentId=null, index=0, searchMode=false) {
   const row = document.createElement('div');
   row.className = 'bookmark-item' + (selectedIds.has(item.id) ? ' selected' : '');
   row.dataset.id = item.id;
