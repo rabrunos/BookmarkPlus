@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "Favoritos+ para Edge",
-  "version": "0.3.1",
-  "description": "Favoritos no visual do Edge com visão contínua, índice lateral, importar HTML e backups.",
+  "version": "0.4.0",
+  "description": "Favoritos no visual do Edge com raízes separadas, pastas recolhíveis, drag-and-drop, importar HTML e backups.",
   "permissions": [
     "bookmarks",
     "storage",
