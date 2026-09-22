@@ -1,7 +1,7 @@
 {
   "schema": 1,
   "type": "extension",
-  "displayName": "Favoritos+ para Edge",
+  "displayName": "Bookmark+",
   "entry": ".",
   "configBridge": true
 }
