@@ -1,40 +1,39 @@
-# Favoritos+ para Edge — v0.3
+# Favoritos+ para Edge — v0.4.0
 
 ## Novidades
 
-- ícone da extensão trocado pela estrela contornada usada pelo próprio gerenciador de Favoritos do Edge;
-- a área central agora mostra **todos os favoritos de todos os níveis ao mesmo tempo**;
-- cada pasta vira uma seção contínua no conteúdo;
-- a barra lateral funciona como **índice de navegação**;
-- clicar numa pasta na lateral apenas rola a página até aquela seção;
-- ao rolar a área central, a pasta correspondente é destacada na lateral;
-- busca continua funcionando globalmente;
-- adicionar favorito/pasta usa a pasta atualmente selecionada no índice;
-- Copiar HTML continua copiando a pasta selecionada;
+- a área central mostra somente a raiz selecionada na barra lateral;
+- Barra de Favoritos, Outros Favoritos, Favoritos do celular e Espaços de trabalho ficam separados;
+- pastas na área principal podem ser recolhidas e expandidas;
+- corrigido o botão de recolher/expandir da pasta selecionada na barra lateral;
+- favoritos podem ser arrastados para reordenar;
+- favoritos podem ser movidos para dentro ou para fora de pastas;
+- pastas também podem ser reorganizadas;
+- itens podem ser arrastados diretamente para pastas e raízes da barra lateral;
+- a ordem exibida segue a estrutura real da API de favoritos do Edge;
+- busca continua global;
 - importar/mesclar/backups continuam disponíveis em `⋯`.
-
-## Instalação
-
-1. Extraia o ZIP.
-2. Abra `edge://extensions/`.
-3. Remova/desative a versão anterior.
-4. Ative **Modo de desenvolvedor**.
-5. Clique em **Carregar sem compactação**.
-6. Selecione a pasta `FavoritosPlus_Edge_v0.3`.
-7. Abra `edge://favorites/?id=1`.
-
-## Observação
-
-A visão contínua não altera a estrutura real dos favoritos. É apenas uma forma diferente de visualizar e navegar pelos mesmos dados da API `chrome.bookmarks`.
 
 ## Compatibilidade com ExtNest
 
-Esta versão inclui suporte ao ExtNest Bridge v1.
+O repositório é compatível com ExtNest:
 
-- `.extnest.json` identifica o repositório como uma extensão compatível com ExtNest;
-- `manifest.json` possui `key` fixa para manter o mesmo ID entre computadores;
-- `extnest/bridge.js` permite ping, backup/restauração de configuração e reload;
-- o backup do ExtNest inclui apenas `favoritosPlusExpanded` (estado visual das pastas expandidas);
-- os favoritos e os backups internos de favoritos não são enviados pelo Config Bridge.
+- `.extnest.json` obrigatório na raiz;
+- `manifest.json` possui `key` fixa;
+- ExtNest Bridge v1 integrado;
+- backup de configuração inclui:
+  - `favoritosPlusExpanded`;
+  - `favoritosPlusContentCollapsed`;
+- favoritos reais e backups internos de favoritos não são enviados ao backup do ExtNest.
 
-O repositório deve manter `manifest.json` e `.extnest.json` na raiz.
+## Atualização via ExtNest
+
+O ExtNest compara a versão local com `manifest.version`.
+
+Versão atual:
+
+```text
+0.4.0
+```
+
+Ao detectar uma instalação anterior, o ExtNest deve oferecer a atualização e baixar o ZIP da branch quando você clicar em atualizar.
