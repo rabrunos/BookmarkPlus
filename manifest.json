@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "Favoritos+ para Edge",
-  "version": "0.4.0",
-  "description": "Favoritos no visual do Edge com raízes separadas, pastas recolhíveis, drag-and-drop, importar HTML e backups.",
+  "name": "Bookmark+",
+  "version": "0.4.1",
+  "description": "Bookmark manager for Edge with separated roots, collapsible folders, drag-and-drop, HTML import and backups.",
   "permissions": [
     "bookmarks",
     "storage",
